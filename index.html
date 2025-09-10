@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BYFTEČEK</title>
+<style>
+* { box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
+ 
+body, html { margin: 0; padding: 0; height: 100%; }
+ 
+body { display: flex; height: 100vh; }
+ 
+/* levý panel */
+#sidebar {
+  width: 250px;
+  background: #1c5c4d;
+  color: white;
+  padding: 10px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+ 
+.sidebar-item {
+  display: flex;
+  align-items: center;
+  background: #000;
+  color: white;
+  margin: 8px 0;
+  padding: 10px 15px;
+  border-radius: 20px;
+}
+ 
+.sidebar-item img {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  margin-right: 10px;
+}
+ 
+/* hlavní část */
+#main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+ 
+/* horní lišta */
+header {
+  background: #000;
+  color: white;
+  padding: 15px;
+  text-align: center;
+  font-weight: bold;
+}
+ 
+/* chat okno */
+#chat-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 10px;
+  overflow-y: auto;
+  background: #d3d3d3;
+}
+ 
+/* zprávy */
+.message {
+  max-width: 70%;
+  margin: 8px;
+  padding: 10px 15px;
+  border-radius: 20px;
+  word-wrap: break-word;
+  position: relative;
+  color: white;
+  font-weight: bold;
+  background: #ff0000;
+}
+ 
+/* moje zprávy */
+.you {
+  align-self: flex-end;
+  border-bottom-right-radius: 0;
+}
+ 
+/* ostatní zprávy */
+.other {
+  align-self: flex-start;
+  border-bottom-left-radius: 0;
+}
+ 
+/* čas a akce */
+.meta {
+  font-size: 0.7em;
+  opacity: 0.9;
+  margin-top: 4px;
+  text-align: right;
+  color: black;
+}
+ 
+.meta button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  margin-left: 5px;
+  font-size: 0.9em;
+}
+ 
+/* input dole */
+footer {
+  display: flex;
+  padding: 10px;
+  background: #0044ff;
+}
+ 
+footer textarea {
+  flex: 1;
+  padding: 10px;
+  border: none;
+  border-radius: 4px;
+  margin-right: 10px;
+  resize: none;
+}
+ 
+footer button {
+  background: #000;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 15px;
+  cursor: pointer;
+  font-weight: bold;
+}
+ 
+footer button:hover { background: #333; }
+ 
+/* overlay */
+.overlay {
+  position: fixed; top: 0; left: 0;
+  width: 100%; height: 100%;
+  background: rgba(0,0,0,0.7);
+  display: none; opacity: 0;
+  transition: opacity 0.3s ease; z-index: 20;
+}
+.overlay.show { display: block; opacity: 1; }
+ 
+/* modal */
+.modal {
+  position: fixed; top: 50%; left: 50%;
+  transform: translate(-50%, -50%) scale(0.8);
+  opacity: 0; background: white;
+  padding: 20px; border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+  display: none; z-index: 30;
+  width: 90%; max-width: 400px;
+  transition: transform 0.3s ease, opacity 0.3s ease;
+}
+.modal.show { display: block; transform: translate(-50%, -50%) scale(1); opacity: 1; }
+</style>
+</head>
+<body>
+ 
+<!-- levý panel -->
+<div id="sidebar">
+  <div class="sidebar-item"><img src="https://via.placeholder.com/30" alt=""> lorem</div>
+  <div class="sidebar-item"><img src="https://via.placeholder.com/30" alt=""> lorem</div>
+  <div class="sidebar-item"><img src="https://via.placeholder.com/30" alt=""> lorem</div>
+  <div class="sidebar-item"><img src="https://via.placeholder.com/30" alt=""> lorem</div>
+</div>
+ 
+<!-- hlavní část -->
+<div id="main">
+  <header>BYFTEČEK</header>
+  <main id="chat-container"></main>
+  <footer>
+    <textarea id="content" rows="1" placeholder="napiš sem něco..."></textarea>
+    <button id="send">Odeslat</button>
+  </footer>
+</div>
+ 
+<div class="overlay" id="overlay"></div>
+<div class="modal" id="edit-modal">
+<form id="edit-message-form">
+<h2>Upravit zprávu:</h2>
+<input type="hidden" id="edit-id" />
+<label>
+<textarea id="edit-content" required></textarea>
+</label>
+<button type="submit">Uložit</button>
+<button type="button" id="cancel-edit">Zrušit</button>
+</form>
+</div>
+ 
+<script>
+const database = "3it_burdam23";
+const username = "burdam23";
+const password = "8JWXcAxtGj";
+const server = "localhost";
+const url = "http://marcincin.epsilon.spstrutnov.cz/gate.php";
+ 
+const chat = document.getElementById("chat-container");
+const sendBtn = document.getElementById("send");
+const input = document.getElementById("content");
+ 
+const overlay = document.getElementById("overlay");
+const editModal = document.getElementById("edit-modal");
+const editForm = document.getElementById("edit-message-form");
+const cancelEditBtn = document.getElementById("cancel-edit");
+ 
+let userId = localStorage.getItem("chat_user_id");
+if (!userId) {
+  userId = "user_" + Math.random().toString(36).substr(2, 9);
+  localStorage.setItem("chat_user_id", userId);
+}
+ 
+async function sql(query) {
+  const postJson = JSON.stringify({ database, username, password, server, sql: query });
+  try {
+    const response = await fetch(url, { method: "POST", body: postJson });
+    if (!response.ok) throw new Error(`Response status: ${response.status}`);
+    return await response.json();
+  } catch (error) {
+    console.error(error.message);
+  }
+}
+ 
+let lastMessages = [];
+ 
+async function loadMessages() {
+  const data = await sql(`SELECT * FROM messages ORDER BY created_at ASC`);
+  if (!data) return;
+ 
+  const isAtBottom = chat.scrollTop + chat.clientHeight >= chat.scrollHeight - 5;
+ 
+  if (JSON.stringify(data) !== JSON.stringify(lastMessages)) {
+    chat.innerHTML = "";
+    data.forEach(msg => renderMessage(msg));
+    lastMessages = data;
+  }
+ 
+  if (isAtBottom) {
+    chat.scrollTop = chat.scrollHeight;
+  }
+}
+ 
+function renderMessage(msg) {
+  const div = document.createElement("div");
+  div.className = "message " + (msg.author === userId ? "you" : "other");
+  div.innerHTML = `
+    ${msg.content}
+    <div class="meta">
+      ${new Date(msg.created_at).toLocaleTimeString([], {hour: "2-digit", minute:"2-digit"})}
+      ${msg.author === userId
+        ? `<button onclick="startEdit(${msg.id}, '${msg.content.replace(/'/g, "\\'")}')">✏️</button>
+           <button onclick="deleteMessage(${msg.id})">🗑️</button>`
+        : ""}
+    </div>
+  `;
+  chat.appendChild(div);
+}
+ 
+async function sendMessage() {
+  const content = input.value.trim();
+  if (!content) return;
+  await sql(`INSERT INTO messages (author, content) VALUES ('${userId}', '${content.replace(/'/g, "''")}')`);
+  input.value = "";
+  loadMessages();
+}
+ 
+sendBtn.addEventListener("click", sendMessage);
+ 
+input.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+});
+ 
+async function deleteMessage(id) {
+  await sql(`DELETE FROM messages WHERE id = ${id} AND author='${userId}'`);
+  loadMessages();
+}
+ 
+function startEdit(id, content) {
+  document.getElementById("edit-id").value = id;
+  document.getElementById("edit-content").value = content;
+  overlay.classList.add("show");
+  editModal.classList.add("show");
+}
+ 
+cancelEditBtn.addEventListener("click", () => {
+  overlay.classList.remove("show");
+  editModal.classList.remove("show");
+});
+ 
+editForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const id = document.getElementById("edit-id").value;
+  const content = document.getElementById("edit-content").value.trim();
+  if (!content) return;
+  await sql(`UPDATE messages SET content='${content.replace(/'/g, "''")}' WHERE id=${id} AND author='${userId}'`);
+  overlay.classList.remove("show");
+  editModal.classList.remove("show");
+  loadMessages();
+});
+ 
+loadMessages();
+setInterval(loadMessages, 3000);
+ 
+window.startEdit = startEdit;
+window.deleteMessage = deleteMessage;
+</script>
+</body>
+</html>
+ 
